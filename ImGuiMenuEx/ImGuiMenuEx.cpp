@@ -4,9 +4,9 @@
 #include "imgui/examples/imgui_impl_win32.h"
 #include "Detour4.0/include/detours.h"
 #if _WIN64
-#pragma comment(lib, "Detour4.0//libs//x64//detours.lib")
+#pragma comment(lib, "Detour4.0//libs//x64_//detours.lib")
 #else
-#pragma comment(lib, "Detour4.0//libs//x86//detours.lib")
+#pragma comment(lib, "Detour4.0//libs//x86_//detours.lib")
 #endif
 
 
@@ -150,8 +150,8 @@ bool criar_device(UINT_PTR* dVTable)
 		&pPresentParams,
 		&pDevice)))
 		return false;
-	auto* vTable = reinterpret_cast<UINT_PTR*>(pDevice);
-	vTable = reinterpret_cast<UINT_PTR*>(vTable[0]);
+	auto* vTable = reinterpret_cast<uintptr_t*>(pDevice);
+	vTable = reinterpret_cast<uintptr_t*>(vTable[0]);
 	dVTable[0] = vTable[16]; //Reset
 	dVTable[1] = vTable[17]; //Present
 	dVTable[2] = vTable[32]; //GetRenderTargetData
@@ -164,7 +164,7 @@ bool criar_device(UINT_PTR* dVTable)
 	return true;
 }
 
-UINT_PTR vTable[7] = {0};
+uintptr_t vTable[7] = {0};
 
 
 bool setHooks()
@@ -188,8 +188,7 @@ void do_thread()
 	} while (!game_hwnd);
 	if (criar_device(vTable))
 	{
-		printf("Reset: 0x%X\n", (DWORD)vTable[0]);
-		printf("Present: 0x%X\n", (DWORD)vTable[1]);
+		printf("Reset: 0x%p, Present: 0x%p\n", vTable[0], vTable[1]);
 		setHooks();
 	}
 
