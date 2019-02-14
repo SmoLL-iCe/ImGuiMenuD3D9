@@ -2,6 +2,12 @@
 #include "imgui/imgui.h"
 #include "imgui/examples/imgui_impl_dx9.h"
 #include "imgui/examples/imgui_impl_win32.h"
+#include "Detour4.0/include/detours.h"
+#if _WIN64
+#pragma comment(lib, "Detour4.0//libs//x64//detours.lib")
+#else
+#pragma comment(lib, "Detour4.0//libs//x86//detours.lib")
+#endif
 
 
 using present_t = HRESULT(APIENTRY*)(IDirect3DDevice9*, const RECT*, const RECT*, HWND, const RGNDATA*);
@@ -163,41 +169,57 @@ UINT_PTR vTable[7] = {0};
 
 bool setHooks()
 {
-	if (MH_Initialize() != MH_OK) { return false; }
-	if (MH_CreateHook(reinterpret_cast<DWORD_PTR*>(vTable[1]), &Present_Desvio,
-	                  reinterpret_cast<void**>(&present_original)) != MH_OK)
-	{
-		return false;
-	}
-	if (MH_EnableHook(reinterpret_cast<DWORD_PTR*>(vTable[1])) != MH_OK) { return false; }
-
-	if (MH_CreateHook(reinterpret_cast<DWORD_PTR*>(vTable[0]), &Reset_Desvio,
-	                  reinterpret_cast<void**>(&reset_original)) != MH_OK)
-	{
-		return false;
-	}
-	if (MH_EnableHook(reinterpret_cast<DWORD_PTR*>(vTable[0])) != MH_OK) { return false; }
+	present_original	= reinterpret_cast<present_t>	(vTable[1]);
+	reset_original		= reinterpret_cast<reset_t>		(vTable[0]);
+	DetourTransactionBegin();
+	DetourUpdateThread(GetCurrentThread());
+	DetourAttach(&(PVOID&)present_original, Present_Desvio);
+	DetourAttach(&(PVOID&)reset_original,	Reset_Desvio);
+	DetourTransactionCommit();
 	return true;
 }
 
 void do_thread()
 {
+	do
+	{
+		game_hwnd = FindWindowA("CrossFire"/*"D3D9"*/, nullptr); //janela do jogo
+		Sleep(100);
+	} while (!game_hwnd);
 	if (criar_device(vTable))
 	{
 		printf("Reset: 0x%X\n", (DWORD)vTable[0]);
 		printf("Present: 0x%X\n", (DWORD)vTable[1]);
-		game_hwnd = FindWindowA("D3D9", nullptr); //janela do jogo
 		setHooks();
+	}
+
+
+	//XignCode3 unhookAPI
+	DWORD old;
+	LPVOID gaks = &GetAsyncKeyState;
+	LPVOID gks  = &GetKeyState;
+	auto gaks_byte = *reinterpret_cast<DWORD64*>(gaks);
+	auto gks_byte  = *reinterpret_cast<DWORD64*>(gks);
+	VirtualProtect(gaks, 8, PAGE_EXECUTE_READWRITE, &old);
+	VirtualProtect(gks,  8, PAGE_EXECUTE_READWRITE, &old);
+	while (true)
+	{
+		if (gaks_byte != *reinterpret_cast<DWORD64*>(gaks))
+			* reinterpret_cast<DWORD64*>(gaks) = gaks_byte; //unhook GetAsyncKeyState 
+
+		if (gks_byte  != *reinterpret_cast<DWORD64*>(gks))
+			* reinterpret_cast<DWORD64*>(gks) = gks_byte; //unhook GetAsyncKeyState 
+		Sleep(500);
 	}
 }
 
 void open_console(std::string Title)
 {
 	AllocConsole();
-	freopen("CONIN$", "r", stdin);
-	freopen("CONOUT$", "w", stdout);
-	freopen("CONOUT$", "w", stderr);
-
+	FILE* ssttree;
+	freopen_s(&ssttree, "CONIN$", "r", stdin);
+	freopen_s(&ssttree, "CONOUT$", "w", stdout);
+	freopen_s(&ssttree, "CONOUT$", "w", stderr);
 	SetConsoleTitle(Title.c_str());
 }
 
