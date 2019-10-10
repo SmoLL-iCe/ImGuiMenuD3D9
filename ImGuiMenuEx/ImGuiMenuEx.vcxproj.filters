@@ -16,6 +16,9 @@
     <Filter Include="ImGui">
       <UniqueIdentifier>{c18b0df9-45ac-467d-87bd-de5fa802b43c}</UniqueIdentifier>
     </Filter>
+    <Filter Include="DX">
+      <UniqueIdentifier>{a854f6bb-38fd-4202-8c8c-ca5c8f800f19}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
@@ -48,6 +51,9 @@
     <ClInclude Include="imgui\examples\imgui_impl_win32.h">
       <Filter>ImGui</Filter>
     </ClInclude>
+    <ClInclude Include="dx\dx9.h">
+      <Filter>DX</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -70,6 +76,9 @@
     </ClCompile>
     <ClCompile Include="imgui\examples\imgui_impl_win32.cpp">
       <Filter>ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="dx\dx9.cpp">
+      <Filter>DX</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

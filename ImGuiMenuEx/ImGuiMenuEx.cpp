@@ -1,60 +1,42 @@
 #include "stdafx.h"
+#include "dx/dx9.h"
 #include "imgui/imgui.h"
 #include "imgui/examples/imgui_impl_dx9.h"
 #include "imgui/examples/imgui_impl_win32.h"
-#include "Detour4.0/include/detours.h"
-#if _WIN64
-#pragma comment(lib, "Detour4.0//libs//x64_//detours.lib")
-#else
-#pragma comment(lib, "Detour4.0//libs//x86_//detours.lib")
-#endif
 
 
-using present_t = HRESULT(APIENTRY*)(IDirect3DDevice9*, const RECT*, const RECT*, HWND, const RGNDATA*);
-HRESULT APIENTRY Present_Desvio(IDirect3DDevice9*, const RECT*, const RECT*, HWND, const RGNDATA*);
-present_t present_original = nullptr;
-
-using reset_t = HRESULT(APIENTRY *)(IDirect3DDevice9*, D3DPRESENT_PARAMETERS*);
-HRESULT APIENTRY Reset_Desvio(IDirect3DDevice9*, D3DPRESENT_PARAMETERS*);
-reset_t reset_original = nullptr;
-
-
-WNDPROC game_wndproc = nullptr;
+WNDPROC p_window_proc = nullptr;
 extern LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-
 LRESULT CALLBACK wnd_proc(const HWND hwnd, const UINT u_msg, const WPARAM w_param, const LPARAM l_param)
 {
 	if (ImGui_ImplWin32_WndProcHandler(hwnd, u_msg, w_param, l_param) && GetAsyncKeyState(VK_INSERT) & 1)
 	{
 		return 1l;
 	}
-	return CallWindowProc(game_wndproc, hwnd, u_msg, w_param, l_param);
+	return CallWindowProc(p_window_proc, hwnd, u_msg, w_param, l_param);
 }
 
-HWND game_hwnd = nullptr;
 bool do_ini = true;
 
 
 bool show_demo_window = true;
 bool show_another_window = false;
 ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
-
-HRESULT APIENTRY Present_Desvio(IDirect3DDevice9* p_device, const RECT* p_source_rect, const RECT* p_dest_rect,
-                                const HWND h_dest_window_override, const RGNDATA* p_dirty_region)
+void __stdcall main_render(IDirect3DDevice9* p_device)
 {
+	//printf("zz\n");
 	if (do_ini)
 	{
+		const auto window = GetForegroundWindow();
+		DWORD pid;
+		if (!window || !GetWindowThreadProcessId(window, &pid) || pid != GetCurrentProcessId())
+			return;	
 		do_ini = false;
+		p_window_proc = reinterpret_cast<WNDPROC>(SetWindowLongPtr(window, GWLP_WNDPROC, LONG_PTR(wnd_proc)));
 		IMGUI_CHECKVERSION();
-		game_wndproc = reinterpret_cast<WNDPROC>(SetWindowLongPtr(game_hwnd, GWLP_WNDPROC, LONG_PTR(wnd_proc)));
 		ImGui::CreateContext();
-		auto& io = ImGui::GetIO();
-		(void)io;
-		//io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;  // Enable Keyboard Controls
-		ImGui_ImplWin32_Init(game_hwnd);
+		ImGui_ImplWin32_Init(window);
 		ImGui_ImplDX9_Init(p_device);
-
-		// Setup style
 		ImGui::StyleColorsDark();
 	}
 	ImGui_ImplDX9_NewFrame();
@@ -86,7 +68,7 @@ HRESULT APIENTRY Present_Desvio(IDirect3DDevice9* p_device, const RECT* p_source
 		ImGui::Text("counter = %d", counter);
 
 		ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate,
-		            ImGui::GetIO().Framerate);
+			ImGui::GetIO().Framerate);
 		ImGui::End();
 	}
 
@@ -105,121 +87,52 @@ HRESULT APIENTRY Present_Desvio(IDirect3DDevice9* p_device, const RECT* p_source
 	ImGui::EndFrame();
 	ImGui::Render();
 	ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
-	const auto ret = present_original(p_device, p_source_rect, p_dest_rect, h_dest_window_override, p_dirty_region);
-
-
-	return ret;
 }
 
-HRESULT APIENTRY Reset_Desvio(IDirect3DDevice9* p_device, D3DPRESENT_PARAMETERS* p_presentation_parameters)
+auto gaks	= reinterpret_cast<void*>(&GetAsyncKeyState);
+auto gks	= reinterpret_cast<void*>(&GetKeyState);
+void xigncode3_un_hook()
 {
-	ImGui_ImplDX9_InvalidateDeviceObjects();
-	const auto ResetReturn = reset_original(p_device, p_presentation_parameters);
-	if (SUCCEEDED(ResetReturn))
+	DWORD old;
+	const size_t alloc_size = 100;
+	const auto alloc_gaks	= malloc(alloc_size);
+	const auto alloc_gks	= malloc(alloc_size);
+	if (!alloc_gaks || !alloc_gks)
+		return;
+
+	memcpy(alloc_gaks,	gaks,	alloc_size);
+	memcpy(alloc_gks,	gks,	alloc_size);
+	VirtualProtect(gaks,	alloc_size, PAGE_EXECUTE_READWRITE, &old);
+	VirtualProtect(gks,		alloc_size, PAGE_EXECUTE_READWRITE, &old);
+	while (true)
 	{
-		ImGui_ImplDX9_CreateDeviceObjects();
-		ImGui_ImplDX9_Shutdown();
-		ImGui::DestroyContext();
+		if (memcmp(gaks, alloc_gaks, alloc_size) != 0 && memcmp(gks, alloc_gks, alloc_size) != 0)
+		{
+			memcpy(gaks,	alloc_gaks, alloc_size);
+			memcpy(gks,		alloc_gks,	alloc_size);
+			break;
+		}
+		Sleep(100);
 	}
-	return ResetReturn;
-}
-
-
-//==========================================================================================================================
-
-
-bool criar_device(UINT_PTR* dVTable)
-{
-	LPDIRECT3D9 mD3D = nullptr;
-	mD3D = Direct3DCreate9(D3D_SDK_VERSION);
-	if (mD3D == nullptr)
-		return false;
-
-	D3DPRESENT_PARAMETERS pPresentParams;
-	ZeroMemory(&pPresentParams, sizeof(pPresentParams));
-	pPresentParams.Windowed = true;
-	pPresentParams.BackBufferFormat = D3DFMT_UNKNOWN;
-	pPresentParams.SwapEffect = D3DSWAPEFFECT_DISCARD;
-
-	LPDIRECT3DDEVICE9 pDevice = nullptr;
-	if (FAILED(mD3D->CreateDevice(
-		D3DADAPTER_DEFAULT,
-		D3DDEVTYPE_HAL,
-		GetDesktopWindow(),
-		D3DCREATE_SOFTWARE_VERTEXPROCESSING,
-		&pPresentParams,
-		&pDevice)))
-		return false;
-	auto* vTable = reinterpret_cast<uintptr_t*>(pDevice);
-	vTable = reinterpret_cast<uintptr_t*>(vTable[0]);
-	dVTable[0] = vTable[16]; //Reset
-	dVTable[1] = vTable[17]; //Present
-	dVTable[2] = vTable[32]; //GetRenderTargetData
-	dVTable[3] = vTable[36]; //CreateOffscreenPlainSurface
-	dVTable[4] = vTable[65]; //SetTexture
-	dVTable[5] = vTable[100]; //SetStreamSource
-	dVTable[6] = vTable[42]; //SetStreamSource
-	pDevice->Release();
-	mD3D->Release();
-	return true;
-}
-
-uintptr_t vTable[7] = {0};
-
-
-bool setHooks()
-{
-	present_original	= reinterpret_cast<present_t>	(vTable[1]);
-	reset_original		= reinterpret_cast<reset_t>		(vTable[0]);
-	DetourTransactionBegin();
-	DetourUpdateThread(GetCurrentThread());
-	DetourAttach(&(PVOID&)present_original, Present_Desvio);
-	DetourAttach(&(PVOID&)reset_original,	Reset_Desvio);
-	DetourTransactionCommit();
-	return true;
+	free(alloc_gaks);
+	free(alloc_gks);
 }
 
 void do_thread()
 {
-	do
-	{
-		game_hwnd = FindWindowA("CrossFire"/*"D3D9"*/, nullptr); //janela do jogo
-		Sleep(100);
-	} while (!game_hwnd);
-	if (criar_device(vTable))
-	{
-		printf("Reset: 0x%p, Present: 0x%p\n", vTable[0], vTable[1]);
-		setHooks();
-	}
-
-
-	//XignCode3 unhookAPI
-	DWORD old;
-	LPVOID gaks = &GetAsyncKeyState;
-	LPVOID gks  = &GetKeyState;
-	auto gaks_byte = *reinterpret_cast<DWORD64*>(gaks);
-	auto gks_byte  = *reinterpret_cast<DWORD64*>(gks);
-	VirtualProtect(gaks, 8, PAGE_EXECUTE_READWRITE, &old);
-	VirtualProtect(gks,  8, PAGE_EXECUTE_READWRITE, &old);
-	while (true)
-	{
-		if (gaks_byte != *reinterpret_cast<DWORD64*>(gaks))
-			* reinterpret_cast<DWORD64*>(gaks) = gaks_byte; //unhook GetAsyncKeyState 
-
-		if (gks_byte  != *reinterpret_cast<DWORD64*>(gks))
-			* reinterpret_cast<DWORD64*>(gks) = gks_byte; //unhook GetAsyncKeyState 
-		Sleep(500);
-	}
+	printf("ini\n");
+	dx9::set_frame_render(reinterpret_cast<void*>( main_render ));
+	xigncode3_un_hook();
 }
 
-void open_console(std::string Title)
+void open_console(const std::string title)
 {
 	AllocConsole();
-	FILE* ssttree;
-	freopen_s(&ssttree, "CONIN$", "r", stdin);
-	freopen_s(&ssttree, "CONOUT$", "w", stdout);
-	freopen_s(&ssttree, "CONOUT$", "w", stderr);
-	SetConsoleTitle(Title.c_str());
+	FILE* street;
+	freopen_s(&street, "CONIN$", "r", stdin);
+	freopen_s(&street, "CONOUT$", "w", stdout);
+	freopen_s(&street, "CONOUT$", "w", stderr);
+	SetConsoleTitle(title.c_str());
 }
 
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved)
